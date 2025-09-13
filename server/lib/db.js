@@ -1,4 +1,10 @@
-// Simple in-memory database for deployment compatibility
+// File-based database for deployment compatibility
+const fs = require('fs');
+const path = require('path');
+
+const DB_FILE = path.join(__dirname, 'data.json');
+
+// Initialize database
 let dbInstance = {
   users: [],
   tasks: [],
@@ -7,6 +13,30 @@ let dbInstance = {
   nextTaskId: 1,
   nextResetId: 1
 };
+
+// Load database from file
+function loadDatabase() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const data = fs.readFileSync(DB_FILE, 'utf8');
+      dbInstance = { ...dbInstance, ...JSON.parse(data) };
+    }
+  } catch (error) {
+    console.log('Creating new database file');
+  }
+}
+
+// Save database to file
+function saveDatabase() {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(dbInstance, null, 2));
+  } catch (error) {
+    console.error('Error saving database:', error);
+  }
+}
+
+// Load database on startup
+loadDatabase();
 
 function getDb() {
   return dbInstance;
@@ -21,19 +51,17 @@ function dbGet(sql, params = []) {
     } else if (sql.includes('SELECT * FROM users WHERE id = ?')) {
       const user = dbInstance.users.find(u => u.id === params[0]);
       resolve(user || null);
-    } else if (sql.includes('SELECT * FROM tasks WHERE user_id = ?')) {
-      const tasks = dbInstance.tasks.filter(t => t.user_id === params[0]);
-      resolve(tasks);
     } else if (sql.includes('SELECT * FROM tasks WHERE id = ?')) {
       const task = dbInstance.tasks.find(t => t.id === params[0]);
       resolve(task || null);
     } else if (sql.includes('SELECT * FROM tasks WHERE id = ? AND user_id = ?')) {
       const task = dbInstance.tasks.find(t => t.id === params[0] && t.user_id === params[1]);
       resolve(task || null);
-    } else if (sql.includes('SELECT * FROM password_resets')) {
-      const reset = dbInstance.password_resets.find(r => 
-        r.email === params[0] && r.otp === params[1] && r.used === 0 && new Date(r.expires_at) > new Date()
-      );
+    } else if (sql.includes('SELECT * FROM password_resets WHERE email = ?')) {
+      const reset = dbInstance.password_resets.find(r => r.email === params[0]);
+      resolve(reset || null);
+    } else if (sql.includes('SELECT * FROM password_resets WHERE token = ?')) {
+      const reset = dbInstance.password_resets.find(r => r.token === params[0]);
       resolve(reset || null);
     } else {
       resolve(null);
@@ -43,10 +71,13 @@ function dbGet(sql, params = []) {
 
 function dbAll(sql, params = []) {
   return new Promise((resolve) => {
-    if (sql.includes('SELECT * FROM tasks WHERE user_id = ? ORDER BY id DESC')) {
-      const tasks = dbInstance.tasks.filter(t => t.user_id === params[0])
-        .sort((a, b) => b.id - a.id);
-      resolve(tasks);
+    if (sql.includes('SELECT * FROM tasks WHERE user_id = ?')) {
+      const userTasks = dbInstance.tasks.filter(t => t.user_id === params[0]);
+      resolve(userTasks);
+    } else if (sql.includes('SELECT * FROM tasks')) {
+      resolve(dbInstance.tasks);
+    } else if (sql.includes('SELECT * FROM users')) {
+      resolve(dbInstance.users);
     } else {
       resolve([]);
     }
@@ -59,11 +90,12 @@ function dbRun(sql, params = []) {
       const user = {
         id: dbInstance.nextUserId++,
         email: params[0],
-        password_hash: params[1],
+        password: params[1],
         created_at: new Date().toISOString()
       };
       dbInstance.users.push(user);
-      resolve({ lastInsertRowid: user.id, changes: 1 });
+      saveDatabase();
+      resolve({ lastInsertRowid: user.id });
     } else if (sql.includes('INSERT INTO tasks')) {
       const task = {
         id: dbInstance.nextTaskId++,
@@ -79,63 +111,67 @@ function dbRun(sql, params = []) {
         updated_at: null
       };
       dbInstance.tasks.push(task);
-      resolve({ lastInsertRowid: task.id, changes: 1 });
+      saveDatabase();
+      resolve({ lastInsertRowid: task.id });
     } else if (sql.includes('INSERT INTO password_resets')) {
       const reset = {
         id: dbInstance.nextResetId++,
         email: params[0],
-        otp: params[1],
+        token: params[1],
         expires_at: params[2],
-        used: 0,
         created_at: new Date().toISOString()
       };
       dbInstance.password_resets.push(reset);
-      resolve({ lastInsertRowid: reset.id, changes: 1 });
-    } else if (sql.includes('UPDATE users SET password_hash')) {
-      const userIndex = dbInstance.users.findIndex(u => u.email === params[1]);
-      if (userIndex !== -1) {
-        dbInstance.users[userIndex].password_hash = params[0];
-        resolve({ changes: 1 });
-      } else {
-        resolve({ changes: 0 });
-      }
+      saveDatabase();
+      resolve({ lastInsertRowid: reset.id });
     } else if (sql.includes('UPDATE tasks SET')) {
-      const taskIndex = dbInstance.tasks.findIndex(t => t.id === params[params.length - 2] && t.user_id === params[params.length - 1]);
+      const taskId = params[params.length - 2]; // Second to last param is usually the ID
+      const taskIndex = dbInstance.tasks.findIndex(t => t.id === taskId);
       if (taskIndex !== -1) {
-        const task = dbInstance.tasks[taskIndex];
-        task.title = params[0] ?? task.title;
-        task.description = params[1] ?? task.description;
-        task.completed = params[2] !== undefined ? params[2] : task.completed;
-        task.due_date = params[3] ?? task.due_date;
-        task.list = params[4] ?? task.list;
-        task.tags = params[5] ?? task.tags;
-        task.subtasks = params[6] ?? task.subtasks;
-        task.updated_at = new Date().toISOString();
-        resolve({ changes: 1 });
-      } else {
-        resolve({ changes: 0 });
+        // Update task fields based on SQL
+        if (sql.includes('title = ?')) {
+          dbInstance.tasks[taskIndex].title = params[0];
+        }
+        if (sql.includes('description = ?')) {
+          dbInstance.tasks[taskIndex].description = params[1];
+        }
+        if (sql.includes('completed = ?')) {
+          dbInstance.tasks[taskIndex].completed = params[2];
+        }
+        if (sql.includes('due_date = ?')) {
+          dbInstance.tasks[taskIndex].due_date = params[3];
+        }
+        if (sql.includes('list = ?')) {
+          dbInstance.tasks[taskIndex].list = params[4];
+        }
+        if (sql.includes('tags = ?')) {
+          dbInstance.tasks[taskIndex].tags = params[5];
+        }
+        if (sql.includes('subtasks = ?')) {
+          dbInstance.tasks[taskIndex].subtasks = params[6];
+        }
+        if (sql.includes('updated_at = datetime')) {
+          dbInstance.tasks[taskIndex].updated_at = new Date().toISOString();
+        }
+        saveDatabase();
       }
-    } else if (sql.includes('UPDATE tasks SET completed')) {
-      const taskIndex = dbInstance.tasks.findIndex(t => t.id === params[1] && t.user_id === params[2]);
-      if (taskIndex !== -1) {
-        dbInstance.tasks[taskIndex].completed = params[0];
-        dbInstance.tasks[taskIndex].updated_at = new Date().toISOString();
-        resolve({ changes: 1 });
-      } else {
-        resolve({ changes: 0 });
-      }
-    } else if (sql.includes('UPDATE password_resets SET used = 1')) {
-      const resetIndex = dbInstance.password_resets.findIndex(r => r.id === params[0] || r.email === params[0]);
-      if (resetIndex !== -1) {
-        dbInstance.password_resets[resetIndex].used = 1;
-        resolve({ changes: 1 });
-      } else {
-        resolve({ changes: 0 });
-      }
+      resolve({ changes: 1 });
     } else if (sql.includes('DELETE FROM tasks')) {
-      const taskIndex = dbInstance.tasks.findIndex(t => t.id === params[0] && t.user_id === params[1]);
+      const taskId = params[0];
+      const taskIndex = dbInstance.tasks.findIndex(t => t.id === taskId);
       if (taskIndex !== -1) {
         dbInstance.tasks.splice(taskIndex, 1);
+        saveDatabase();
+        resolve({ changes: 1 });
+      } else {
+        resolve({ changes: 0 });
+      }
+    } else if (sql.includes('DELETE FROM password_resets')) {
+      const token = params[0];
+      const resetIndex = dbInstance.password_resets.findIndex(r => r.token === token);
+      if (resetIndex !== -1) {
+        dbInstance.password_resets.splice(resetIndex, 1);
+        saveDatabase();
         resolve({ changes: 1 });
       } else {
         resolve({ changes: 0 });
@@ -147,5 +183,3 @@ function dbRun(sql, params = []) {
 }
 
 module.exports = { getDb, dbGet, dbAll, dbRun };
-
-
