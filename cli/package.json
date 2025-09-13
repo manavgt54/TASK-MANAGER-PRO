@@ -1,0 +1,25 @@
+{
+  "name": "task-manager-cli",
+  "version": "1.0.0",
+  "description": "CLI Chat Interface for Task Manager Pro with Full Context",
+  "main": "index.js",
+  "bin": {
+    "task-chat": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "inquirer": "^9.2.12",
+    "chalk": "^4.1.2",
+    "axios": "^1.6.2",
+    "ora": "^5.4.1",
+    "table": "^6.8.1",
+    "figlet": "^1.6.0"
+  },
+  "keywords": ["cli", "chat", "ai", "task-manager", "productivity"],
+  "author": "Task Manager Pro",
+  "license": "MIT"
+}

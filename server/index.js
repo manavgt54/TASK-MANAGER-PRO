@@ -525,7 +525,7 @@ Task Manager Pro
 
 // Chatbot endpoint
 app.post('/api/chatbot', authMiddleware, async (req, res) => {
-  const { message, userTasks, userEmail } = req.body || {};
+  const { message, userTasks, userEmail, fullContext, contextType } = req.body || {};
   
   if (!message) {
     return res.status(400).json({ success: false, message: 'Message is required' });
@@ -540,22 +540,46 @@ app.post('/api/chatbot', authMiddleware, async (req, res) => {
     const completedTasks = userTasks.filter(task => task.completed).length;
     const pendingTasks = totalTasks - completedTasks;
     const highPriorityTasks = userTasks.filter(task => task.priority === 'high' && !task.completed).length;
+    const overdueTasks = userTasks.filter(task => task.dueDate && new Date(task.dueDate) < new Date() && !task.completed).length;
     
-    // Generate contextual responses
+    // Get task lists
+    const taskLists = [...new Set(userTasks.map(task => task.list || 'Personal'))];
+    const personalTasks = userTasks.filter(task => (task.list || 'Personal') === 'Personal').length;
+    const workTasks = userTasks.filter(task => task.list === 'Work').length;
+    
+    // Get recent tasks
+    const recentTasks = userTasks
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 3);
+    
+    // Generate contextual responses with full context
     if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
-      response = `Hello! I'm your AI productivity assistant. I can see you have ${totalTasks} tasks total (${completedTasks} completed, ${pendingTasks} pending). How can I help you today?`;
+      response = `Hello! I'm your AI productivity assistant with full access to your data. I can see you have ${totalTasks} tasks total (${completedTasks} completed, ${pendingTasks} pending). You're working across ${taskLists.length} lists: ${taskLists.join(', ')}. How can I help you today?`;
     } else if (message.toLowerCase().includes('motivation') || message.toLowerCase().includes('motivate')) {
-      response = `You're doing great! You've completed ${completedTasks} tasks. ${pendingTasks > 0 ? `You have ${pendingTasks} tasks remaining - let's tackle them one by one! 💪` : 'You\'re all caught up! Time to celebrate! 🎉'}`;
+      const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+      response = `You're doing great! You've completed ${completedTasks} tasks (${completionRate}% completion rate). ${pendingTasks > 0 ? `You have ${pendingTasks} tasks remaining - let's tackle them one by one! 💪` : 'You\'re all caught up! Time to celebrate! 🎉'}`;
     } else if (message.toLowerCase().includes('schedule') || message.toLowerCase().includes('plan')) {
-      response = `Based on your tasks, I recommend focusing on your ${highPriorityTasks} high-priority tasks first. Would you like me to suggest a daily schedule or help prioritize specific tasks?`;
+      response = `Based on your current data:\n• ${highPriorityTasks} high-priority tasks need attention\n• ${overdueTasks} tasks are overdue\n• You have ${personalTasks} personal tasks and ${workTasks} work tasks\n\nI recommend focusing on overdue tasks first, then high-priority ones. Would you like me to suggest a daily schedule?`;
     } else if (message.toLowerCase().includes('help') || message.toLowerCase().includes('advice')) {
-      response = `Here's what I can help you with:\n• Task prioritization and scheduling\n• Motivation and productivity tips\n• Analyzing your task patterns\n• Suggesting improvements\n\nWhat specific area would you like help with?`;
+      response = `Here's what I can help you with based on your data:\n• Task prioritization and scheduling\n• Motivation and productivity tips\n• Analyzing your task patterns\n• Suggesting improvements\n• Time management strategies\n• Goal setting and tracking\n\nWhat specific area would you like help with?`;
     } else if (message.toLowerCase().includes('overwhelmed') || message.toLowerCase().includes('stress')) {
-      response = `I understand feeling overwhelmed. Let's break it down:\n• You have ${pendingTasks} pending tasks\n• ${highPriorityTasks} are high priority\n• Try the "Eat the Frog" method - tackle the hardest task first\n• Take breaks between tasks\n\nWhich task feels most urgent right now?`;
+      response = `I understand feeling overwhelmed. Let's break it down:\n• You have ${pendingTasks} pending tasks\n• ${highPriorityTasks} are high priority\n• ${overdueTasks} are overdue\n• Try the "Eat the Frog" method - tackle the hardest task first\n• Take breaks between tasks\n\nWhich task feels most urgent right now?`;
     } else if (message.toLowerCase().includes('productivity') || message.toLowerCase().includes('efficient')) {
-      response = `Here are some productivity tips based on your current tasks:\n• Use the Pomodoro Technique (25 min work, 5 min break)\n• Batch similar tasks together\n• Set specific deadlines for each task\n• Review and adjust priorities daily\n\nWould you like me to help you implement any of these strategies?`;
+      response = `Here are some productivity tips based on your current tasks:\n• Use the Pomodoro Technique (25 min work, 5 min break)\n• Batch similar tasks together\n• Set specific deadlines for each task\n• Review and adjust priorities daily\n• Focus on one list at a time\n\nWould you like me to help you implement any of these strategies?`;
+    } else if (message.toLowerCase().includes('analyze') || message.toLowerCase().includes('pattern')) {
+      response = `Here's your task analysis:\n• Total tasks: ${totalTasks}\n• Completion rate: ${totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0}%\n• Task distribution: ${personalTasks} personal, ${workTasks} work\n• Priority breakdown: ${highPriorityTasks} high, ${userTasks.filter(t => t.priority === 'medium' && !t.completed).length} medium, ${userTasks.filter(t => t.priority === 'low' && !t.completed).length} low\n• Overdue tasks: ${overdueTasks}\n\nWhat would you like to improve?`;
+    } else if (message.toLowerCase().includes('goal') || message.toLowerCase().includes('focus')) {
+      response = `Based on your current tasks, here are some focus areas:\n• Complete ${overdueTasks} overdue tasks first\n• Tackle ${highPriorityTasks} high-priority tasks\n• Balance personal (${personalTasks}) and work (${workTasks}) tasks\n• Set realistic daily goals\n\nWhat specific goal would you like to work on?`;
+    } else if (message.toLowerCase().includes('time') || message.toLowerCase().includes('schedule')) {
+      response = `Here's a suggested time management approach:\n• Morning: Focus on high-priority tasks\n• Afternoon: Handle medium-priority tasks\n• Evening: Review and plan for tomorrow\n• Break tasks into 25-minute Pomodoro sessions\n• Take 5-minute breaks between sessions\n\nWould you like me to create a specific schedule for today?`;
+    } else if (message.toLowerCase().includes('recent') || message.toLowerCase().includes('latest')) {
+      if (recentTasks.length > 0) {
+        response = `Your recent tasks:\n${recentTasks.map(task => `• ${task.title} (${task.list || 'Personal'}) - ${task.completed ? 'Completed' : 'Pending'}`).join('\n')}\n\nWhich one would you like to focus on?`;
+      } else {
+        response = `You don't have any recent tasks. Let's create some new ones!`;
+      }
     } else {
-      response = `I can help you with task management, scheduling, motivation, and productivity tips. You currently have ${totalTasks} tasks (${completedTasks} completed, ${pendingTasks} pending). What would you like to work on?`;
+      response = `I can help you with task management, scheduling, motivation, and productivity tips. You currently have ${totalTasks} tasks (${completedTasks} completed, ${pendingTasks} pending) across ${taskLists.length} lists. What would you like to work on?`;
     }
     
     return res.json({ 
@@ -565,7 +589,11 @@ app.post('/api/chatbot', authMiddleware, async (req, res) => {
         total: totalTasks,
         completed: completedTasks,
         pending: pendingTasks,
-        highPriority: highPriorityTasks
+        highPriority: highPriorityTasks,
+        overdue: overdueTasks,
+        personal: personalTasks,
+        work: workTasks,
+        lists: taskLists
       }
     });
   } catch (error) {
