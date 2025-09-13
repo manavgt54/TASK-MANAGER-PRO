@@ -557,7 +557,7 @@ app.post('/api/chatbot', authMiddleware, async (req, res) => {
     // Use Gemini AI if available, otherwise fallback to rule-based
     if (genAI) {
       try {
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
         // Create context for the AI
         const contextPrompt = `You are a helpful AI productivity assistant for a task management app. 
