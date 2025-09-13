@@ -166,6 +166,11 @@ function App() {
   const [reminderTime, setReminderTime] = useState('');
   const [reminderDate, setReminderDate] = useState('');
 
+  // Chatbot state
+  const [chatMessages, setChatMessages] = useState<Array<{id: number, text: string, isUser: boolean, timestamp: Date}>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+
   // Lists state
   const [lists] = useState<List[]>([
     { id: 1, name: 'Personal', color: '#8B5CF6', description: 'Personal tasks and goals', theme: 'personal' },
@@ -410,6 +415,58 @@ function App() {
       }
     } catch (err) {
       setError('Failed to send reminder');
+    }
+  };
+
+  const handleChatSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+
+    const userMessage = {
+      id: Date.now(),
+      text: chatInput,
+      isUser: true,
+      timestamp: new Date()
+    };
+
+    setChatMessages(prev => [...prev, userMessage]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/chatbot`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: chatInput,
+          userTasks: tasks,
+          userEmail: user?.email
+        })
+      });
+
+      const data = await response.json();
+      
+      const botMessage = {
+        id: Date.now() + 1,
+        text: data.response || 'Sorry, I could not process your request.',
+        isUser: false,
+        timestamp: new Date()
+      };
+
+      setChatMessages(prev => [...prev, botMessage]);
+    } catch (err) {
+      const errorMessage = {
+        id: Date.now() + 1,
+        text: 'Sorry, I encountered an error. Please try again.',
+        isUser: false,
+        timestamp: new Date()
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsChatLoading(false);
     }
   };
 
@@ -902,6 +959,7 @@ function App() {
               { id: 'calendar', label: 'Calendar', icon: '📅' },
               { id: 'sticky', label: 'Sticky Wall', icon: '📝' },
               { id: 'upcoming', label: 'Upcoming', icon: '⏰' },
+              { id: 'chatbot', label: 'AI Assistant', icon: '🤖' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -1479,6 +1537,84 @@ function App() {
                 })
               )}
             </div>
+          </div>
+        )}
+
+        {/* AI Assistant Chatbot View */}
+        {currentView === 'chatbot' && (
+          <div className="bg-white rounded-lg shadow-sm p-6 h-[600px] flex flex-col">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">🤖 AI Assistant</h2>
+              <div className="text-sm text-gray-500">
+                Your productivity buddy
+              </div>
+            </div>
+            
+            {/* Chat Messages */}
+            <div className="flex-1 overflow-y-auto mb-4 space-y-4">
+              {chatMessages.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="text-4xl mb-2">🤖</div>
+                  <p>Hi! I'm your AI assistant. I can help you with:</p>
+                  <ul className="text-left mt-4 space-y-2">
+                    <li>• Task scheduling and optimization</li>
+                    <li>• Motivation and productivity tips</li>
+                    <li>• Analyzing your task patterns</li>
+                    <li>• Suggesting improvements</li>
+                  </ul>
+                  <p className="mt-4">Ask me anything about your tasks!</p>
+                </div>
+              ) : (
+                chatMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                        message.isUser
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-gray-100 text-gray-900'
+                      }`}
+                    >
+                      <p className="text-sm">{message.text}</p>
+                      <p className="text-xs opacity-70 mt-1">
+                        {message.timestamp.toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+              {isChatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 text-gray-900 max-w-xs lg:max-w-md px-4 py-2 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                      <span className="text-sm">AI is thinking...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Chat Input */}
+            <form onSubmit={handleChatSend} className="flex space-x-2">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Ask me about your tasks..."
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                disabled={isChatLoading}
+              />
+              <button
+                type="submit"
+                disabled={isChatLoading || !chatInput.trim()}
+                className="bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+              >
+                Send
+              </button>
+            </form>
           </div>
         )}
 

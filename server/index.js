@@ -523,6 +523,57 @@ Task Manager Pro
   }
 });
 
+// Chatbot endpoint
+app.post('/api/chatbot', authMiddleware, async (req, res) => {
+  const { message, userTasks, userEmail } = req.body || {};
+  
+  if (!message) {
+    return res.status(400).json({ success: false, message: 'Message is required' });
+  }
+
+  try {
+    // Simple AI responses based on task data
+    let response = '';
+    
+    // Analyze user's tasks
+    const totalTasks = userTasks.length;
+    const completedTasks = userTasks.filter(task => task.completed).length;
+    const pendingTasks = totalTasks - completedTasks;
+    const highPriorityTasks = userTasks.filter(task => task.priority === 'high' && !task.completed).length;
+    
+    // Generate contextual responses
+    if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
+      response = `Hello! I'm your AI productivity assistant. I can see you have ${totalTasks} tasks total (${completedTasks} completed, ${pendingTasks} pending). How can I help you today?`;
+    } else if (message.toLowerCase().includes('motivation') || message.toLowerCase().includes('motivate')) {
+      response = `You're doing great! You've completed ${completedTasks} tasks. ${pendingTasks > 0 ? `You have ${pendingTasks} tasks remaining - let's tackle them one by one! 💪` : 'You\'re all caught up! Time to celebrate! 🎉'}`;
+    } else if (message.toLowerCase().includes('schedule') || message.toLowerCase().includes('plan')) {
+      response = `Based on your tasks, I recommend focusing on your ${highPriorityTasks} high-priority tasks first. Would you like me to suggest a daily schedule or help prioritize specific tasks?`;
+    } else if (message.toLowerCase().includes('help') || message.toLowerCase().includes('advice')) {
+      response = `Here's what I can help you with:\n• Task prioritization and scheduling\n• Motivation and productivity tips\n• Analyzing your task patterns\n• Suggesting improvements\n\nWhat specific area would you like help with?`;
+    } else if (message.toLowerCase().includes('overwhelmed') || message.toLowerCase().includes('stress')) {
+      response = `I understand feeling overwhelmed. Let's break it down:\n• You have ${pendingTasks} pending tasks\n• ${highPriorityTasks} are high priority\n• Try the "Eat the Frog" method - tackle the hardest task first\n• Take breaks between tasks\n\nWhich task feels most urgent right now?`;
+    } else if (message.toLowerCase().includes('productivity') || message.toLowerCase().includes('efficient')) {
+      response = `Here are some productivity tips based on your current tasks:\n• Use the Pomodoro Technique (25 min work, 5 min break)\n• Batch similar tasks together\n• Set specific deadlines for each task\n• Review and adjust priorities daily\n\nWould you like me to help you implement any of these strategies?`;
+    } else {
+      response = `I can help you with task management, scheduling, motivation, and productivity tips. You currently have ${totalTasks} tasks (${completedTasks} completed, ${pendingTasks} pending). What would you like to work on?`;
+    }
+    
+    return res.json({ 
+      success: true, 
+      response: response,
+      taskStats: {
+        total: totalTasks,
+        completed: completedTasks,
+        pending: pendingTasks,
+        highPriority: highPriorityTasks
+      }
+    });
+  } catch (error) {
+    console.error('Chatbot error:', error);
+    return res.status(500).json({ success: false, message: 'AI assistant is temporarily unavailable' });
+  }
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
