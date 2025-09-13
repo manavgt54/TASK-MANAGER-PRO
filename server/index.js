@@ -355,16 +355,19 @@ app.put('/api/tasks/:id', authMiddleware, async (req, res) => {
     
     const updated = await dbGet('SELECT * FROM tasks WHERE id = ?', [id]);
     return res.json({
-      id: updated.id,
-      title: updated.title,
-      description: updated.description || '',
-      completed: !!updated.completed,
-      dueDate: updated.due_date || '',
-      list: updated.list || 'Personal',
-      tags: JSON.parse(updated.tags || '[]'),
-      subtasks: JSON.parse(updated.subtasks || '[]'),
-      createdAt: updated.created_at,
-      updatedAt: updated.updated_at || null
+      success: true,
+      task: {
+        id: updated.id,
+        title: updated.title,
+        description: updated.description || '',
+        completed: !!updated.completed,
+        dueDate: updated.due_date || '',
+        list: updated.list || 'Personal',
+        tags: JSON.parse(updated.tags || '[]'),
+        subtasks: JSON.parse(updated.subtasks || '[]'),
+        createdAt: updated.created_at,
+        updatedAt: updated.updated_at || null
+      }
     });
   } catch (error) {
     console.error('Update task error:', error);
@@ -385,12 +388,15 @@ app.patch('/api/tasks/:id/toggle', authMiddleware, async (req, res) => {
     
     const updated = await dbGet('SELECT * FROM tasks WHERE id = ?', [id]);
     return res.json({
-      id: updated.id,
-      title: updated.title,
-      description: updated.description || '',
-      completed: !!updated.completed,
-      createdAt: updated.created_at,
-      updatedAt: updated.updated_at || null
+      success: true,
+      task: {
+        id: updated.id,
+        title: updated.title,
+        description: updated.description || '',
+        completed: !!updated.completed,
+        createdAt: updated.created_at,
+        updatedAt: updated.updated_at || null
+      }
     });
   } catch (error) {
     console.error('Toggle task error:', error);
@@ -406,7 +412,7 @@ app.delete('/api/tasks/:id', authMiddleware, async (req, res) => {
     if (!task) return res.status(404).json({ message: 'Task not found' });
     
     await dbRun('DELETE FROM tasks WHERE id = ? AND user_id = ?', [id, req.user.userId]);
-    return res.status(204).send();
+    return res.status(200).json({ success: true, message: 'Task deleted successfully' });
   } catch (error) {
     console.error('Delete task error:', error);
     return res.status(500).json({ message: 'Server error' });
