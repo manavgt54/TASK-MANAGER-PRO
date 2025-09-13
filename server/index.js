@@ -114,7 +114,7 @@ async function sendReminderEmail(email, subject, text) {
   }
 
   const mailOptions = {
-    from: 'noreply@taskmanagerpro.com', // Professional sender address
+    from: 'nirmal.gupta6542@gmail.com', // Your verified Gmail address
     to: email,
     subject: subject,
     text: text,
