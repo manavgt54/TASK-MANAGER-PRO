@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
-const { getDb } = require('./lib/db');
+const { getDb, dbGet, dbAll, dbRun } = require('./lib/db');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -42,82 +42,14 @@ const otpStore = new Map();
 app.use(cors());
 app.use(express.json());
 
-// Initialize DB and tables
+// Initialize in-memory database
 const db = getDb();
-
-// Initialize database tables
-db.serialize(() => {
-  // Drop existing tables to recreate with new schema
-  db.exec(`
-    DROP TABLE IF EXISTS tasks;
-    DROP TABLE IF EXISTS password_resets;
-    DROP TABLE IF EXISTS users;
-  `);
-
-  // Create tables
-  db.exec(`
-    CREATE TABLE users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT,
-      completed INTEGER DEFAULT 0,
-      due_date TEXT,
-      list TEXT DEFAULT 'Personal',
-      tags TEXT DEFAULT '[]',
-      subtasks TEXT DEFAULT '[]',
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT,
-      FOREIGN KEY(user_id) REFERENCES users(id)
-    );
-    CREATE TABLE password_resets (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT NOT NULL,
-      otp TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      used INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-  `);
-});
+console.log('✅ In-memory database initialized');
 
 function signToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 }
 
-// Helper functions for async database operations
-function dbGet(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
-}
-
-function dbAll(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
-}
-
-function dbRun(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve({ lastInsertRowid: this.lastID, changes: this.changes });
-    });
-  });
-}
 
 // Generate 6-digit OTP
 function generateOTP() {
