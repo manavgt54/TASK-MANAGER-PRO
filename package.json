@@ -1,0 +1,33 @@
+{
+  "name": "task-manager-app",
+  "version": "1.0.0",
+  "description": "Full-stack task management application",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "cd server && npm run dev",
+    "client:dev": "cd client && npm run dev",
+    "build": "npm run client:build",
+    "client:build": "cd client && npm run build",
+    "start": "cd server && npm start",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up",
+    "docker:down": "docker-compose down",
+    "docker:prod": "docker-compose --profile production up --build"
+  },
+  "keywords": [
+    "task-manager",
+    "react",
+    "nodejs",
+    "express",
+    "sqlite",
+    "jwt",
+    "tailwind"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

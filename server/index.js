@@ -411,6 +411,13 @@ app.delete('/api/tasks/:id', authMiddleware, (req, res) => {
   return res.status(204).send();
 });
 
+// Get current user info
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  const user = db.prepare('SELECT id, email, created_at FROM users WHERE id = ?').get(req.user.userId);
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+  return res.json({ success: true, user: { id: user.id, email: user.email, createdAt: user.created_at } });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
