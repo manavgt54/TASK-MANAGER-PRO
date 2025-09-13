@@ -11,29 +11,29 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 
-// Email configuration - Universal setup
+// Email configuration - SendGrid setup
 let transporter = null;
 let emailConfigured = false;
 
-// Try to configure email, but don't fail if not available
+// Try to configure SendGrid email, but don't fail if not available
 try {
-  if (process.env.EMAIL_USER && process.env.EMAIL_PASS && 
-      process.env.EMAIL_USER !== 'your-email@gmail.com' && 
-      process.env.EMAIL_PASS !== 'your-app-password') {
+  if (process.env.SENDGRID_API_KEY) {
     transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.sendgrid.net',
+      port: 587,
+      secure: false,
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        user: 'apikey',
+        pass: process.env.SENDGRID_API_KEY
       }
     });
     emailConfigured = true;
-    console.log('✅ Email service configured successfully');
+    console.log('✅ SendGrid email service configured successfully');
   } else {
-    console.log('⚠️  Email not configured - OTP will be logged to console for development');
+    console.log('⚠️  SendGrid not configured - Reminders will be logged to console for development');
   }
 } catch (error) {
-  console.log('⚠️  Email configuration failed - OTP will be logged to console for development');
+  console.log('⚠️  SendGrid configuration failed - Reminders will be logged to console for development');
 }
 
 // OTP storage (in production, use Redis or database)
@@ -97,6 +97,50 @@ async function sendOTPEmail(email, otp) {
     console.error('❌ Email sending failed:', error);
     console.log('📝 Note: OTP is still available in console above');
     return true; // Return true anyway since OTP is logged
+  }
+}
+
+// Generic email function for reminders
+async function sendReminderEmail(email, subject, text) {
+  // Always log to console for development/debugging
+  console.log(`\n📧 Reminder Email to ${email}:`);
+  console.log(`Subject: ${subject}`);
+  console.log(`Content: ${text}\n`);
+
+  // If email is not configured, just return true (email is logged above)
+  if (!emailConfigured || !transporter) {
+    console.log('📝 Note: SendGrid not configured - Reminder email displayed above for testing');
+    return true;
+  }
+
+  const mailOptions = {
+    from: 'noreply@taskmanagerpro.com', // Professional sender address
+    to: email,
+    subject: subject,
+    text: text,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #6b21a8; color: white; padding: 20px; text-align: center;">
+          <h1 style="margin: 0;">🔔 Task Manager Pro</h1>
+        </div>
+        <div style="padding: 20px;">
+          <pre style="white-space: pre-wrap; font-family: Arial, sans-serif;">${text}</pre>
+        </div>
+        <div style="background: #f3f4f6; padding: 15px; text-align: center; color: #6b7280;">
+          <p style="margin: 0;">This reminder was sent from Task Manager Pro</p>
+        </div>
+      </div>
+    `
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ Reminder email sent to ${email}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to send reminder email:', error);
+    console.log('📝 Note: Reminder email is still available in console above');
+    return true; // Return true anyway since email is logged
   }
 }
 
@@ -467,11 +511,11 @@ Task Manager Pro
     `;
     
     try {
-      await sendOTPEmail(user.email, reminderSubject, reminderText);
+      await sendReminderEmail(user.email, reminderSubject, reminderText);
       return res.json({ success: true, message: 'Reminder sent successfully' });
     } catch (emailError) {
-      console.log('Reminder email sent to console (email not configured):', reminderText);
-      return res.json({ success: true, message: 'Reminder logged to console (email not configured)' });
+      console.log('Reminder email sent to console (SendGrid not configured):', reminderText);
+      return res.json({ success: true, message: 'Reminder logged to console (SendGrid not configured)' });
     }
   } catch (error) {
     console.error('Send reminder error:', error);
