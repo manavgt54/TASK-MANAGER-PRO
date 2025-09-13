@@ -118,12 +118,16 @@ app.post('/api/auth/register', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required' });
   try {
+    console.log('Registering user:', email);
     const passwordHash = await bcrypt.hash(password, 10);
     const info = await dbRun('INSERT INTO users (email, password_hash) VALUES (?, ?)', [email, passwordHash]);
+    console.log('User created with ID:', info.lastInsertRowid);
     const token = signToken({ userId: info.lastInsertRowid, email });
     const user = { id: info.lastInsertRowid, email };
+    console.log('Registration successful for:', email);
     return res.json({ success: true, token, user });
   } catch (err) {
+    console.error('Registration error:', err);
     if (String(err.message || '').includes('UNIQUE')) {
       return res.status(409).json({ success: false, message: 'Email already registered' });
     }
@@ -409,8 +413,13 @@ app.delete('/api/tasks/:id', authMiddleware, async (req, res) => {
 // Get current user info
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
   try {
+    console.log('Getting user for ID:', req.user.userId);
     const user = await dbGet('SELECT id, email, created_at FROM users WHERE id = ?', [req.user.userId]);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    console.log('Found user:', user);
+    if (!user) {
+      console.log('User not found for ID:', req.user.userId);
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
     return res.json({ success: true, user: { id: user.id, email: user.email, createdAt: user.created_at } });
   } catch (error) {
     console.error('Get user error:', error);
