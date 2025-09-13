@@ -290,11 +290,12 @@ app.post('/api/tasks', authMiddleware, async (req, res) => {
   try {
     const info = await dbRun(`
       INSERT INTO tasks (user_id, title, description, completed, due_date, list, tags, subtasks) 
-      VALUES (?, ?, ?, 0, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       req.user.userId, 
       title, 
       description || '', 
+      0, // completed
       dueDate || '', 
       list || 'Personal',
       JSON.stringify(tags || []),

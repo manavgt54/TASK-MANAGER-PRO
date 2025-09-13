@@ -16,6 +16,6 @@
     }
   ],
   "env": {
-    "VITE_API_BASE": "@api_base_url"
+    "VITE_API_BASE": "https://task-manager-pro-hqx6.onrender.com"
   }
 }

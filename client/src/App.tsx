@@ -186,10 +186,10 @@ function App() {
 
   // Load user data on mount
   useEffect(() => {
-    if (token) {
+    if (token && !user) {
       loadUserData();
     }
-  }, [token]);
+  }, [token, user]);
 
   // Load tasks when user changes
   useEffect(() => {
@@ -223,7 +223,11 @@ function App() {
       });
       if (response.ok) {
         const userData = await response.json();
-        setUser(userData);
+        if (userData.success) {
+          setUser(userData.user);
+        } else {
+          throw new Error('Failed to load user data');
+        }
       } else {
         throw new Error('Invalid token');
       }
@@ -240,11 +244,8 @@ function App() {
     try {
       setIsLoading(true);
       const response = await api.getTasks(token!);
-      if (response.success) {
-        setTasks(response.tasks || []);
-      } else {
-        setError(response.message || 'Failed to load tasks');
-      }
+      // Backend returns tasks array directly
+      setTasks(response || []);
     } catch (err) {
       setError('Failed to load tasks');
     } finally {
@@ -295,6 +296,8 @@ function App() {
         setEmail('');
         setPassword('');
         setConfirmPassword('');
+        // Load tasks after successful registration
+        loadTasks();
       } else {
         setError(response.message || 'Registration failed');
       }
