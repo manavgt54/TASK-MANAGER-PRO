@@ -444,7 +444,8 @@ function App() {
         body: JSON.stringify({
           message: chatInput,
           userTasks: tasks,
-          userEmail: user?.email
+          userEmail: user?.email,
+          stickyNotes: stickyNotes
         })
       });
 

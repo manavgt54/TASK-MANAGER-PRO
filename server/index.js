@@ -533,9 +533,21 @@ Task Manager Pro
   }
 });
 
+// Get sticky notes endpoint
+app.get('/api/sticky-notes', authMiddleware, async (req, res) => {
+  try {
+    // For now, return empty array since sticky notes are stored locally
+    // In the future, you could store them in the database
+    return res.json({ success: true, stickyNotes: [] });
+  } catch (error) {
+    console.error('Get sticky notes error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // Chatbot endpoint with Gemini AI
 app.post('/api/chatbot', authMiddleware, async (req, res) => {
-  const { message, userTasks, userEmail, fullContext, contextType } = req.body || {};
+  const { message, userTasks, userEmail, fullContext, contextType, stickyNotes = [] } = req.body || {};
   
   if (!message) {
     return res.status(400).json({ success: false, message: 'Message is required' });
@@ -559,13 +571,40 @@ app.post('/api/chatbot', authMiddleware, async (req, res) => {
       try {
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
-        // Create context for the AI
-        const contextPrompt = `You are a helpful AI productivity assistant for a task management app. 
+        // Create detailed context for the AI
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        // Get tasks by date for calendar context
+        const todayTasks = userTasks.filter(task => task.dueDate && task.dueDate.split('T')[0] === today);
+        const tomorrowTasks = userTasks.filter(task => task.dueDate && task.dueDate.split('T')[0] === tomorrow);
+        const thisWeekTasks = userTasks.filter(task => {
+          if (!task.dueDate) return false;
+          const taskDate = new Date(task.dueDate);
+          const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+          return taskDate <= weekFromNow && taskDate >= now;
+        });
+        
+        // Get overdue tasks with details
+        const overdueTasksDetailed = userTasks.filter(task => 
+          task.dueDate && new Date(task.dueDate) < now && !task.completed
+        );
+        
+        // Get high priority tasks with full details
+        const highPriorityDetailed = userTasks.filter(task => 
+          task.priority === 'high' && !task.completed
+        );
+        
+        const contextPrompt = `You are an advanced AI productivity assistant with deep access to a user's task management data. You can see everything about their tasks, deadlines, descriptions, priorities, and patterns.
 
-USER CONTEXT:
+USER PROFILE:
 - Email: ${userEmail}
+- Member since: ${userTasks.length > 0 ? new Date(userTasks[0].createdAt).toLocaleDateString() : 'Recently'}
+
+TASK OVERVIEW:
 - Total Tasks: ${totalTasks}
-- Completed: ${completedTasks}
+- Completed: ${completedTasks} (${totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0}% completion rate)
 - Pending: ${pendingTasks}
 - High Priority: ${highPriorityTasks}
 - Overdue: ${overdueTasks}
@@ -573,12 +612,43 @@ USER CONTEXT:
 - Work Tasks: ${workTasks}
 - Task Lists: ${taskLists.join(', ')}
 
-RECENT TASKS:
-${userTasks.slice(0, 10).map(task => `- ${task.title} (${task.priority} priority, ${task.list || 'Personal'}, ${task.completed ? 'Completed' : 'Pending'})`).join('\n')}
+CALENDAR CONTEXT:
+- Today's Tasks (${today}): ${todayTasks.length}
+- Tomorrow's Tasks (${tomorrow}): ${tomorrowTasks.length}
+- This Week's Tasks: ${thisWeekTasks.length}
+
+DETAILED TASK DATA:
+
+OVERDUE TASKS (${overdueTasksDetailed.length}):
+${overdueTasksDetailed.map(task => `- "${task.title}" (${task.list || 'Personal'}) - Due: ${new Date(task.dueDate).toLocaleDateString()} - Priority: ${task.priority}${task.description ? ` - Description: ${task.description}` : ''}`).join('\n')}
+
+HIGH PRIORITY TASKS (${highPriorityDetailed.length}):
+${highPriorityDetailed.map(task => `- "${task.title}" (${task.list || 'Personal'})${task.dueDate ? ` - Due: ${new Date(task.dueDate).toLocaleDateString()}` : ' - No deadline'}${task.description ? ` - Description: ${task.description}` : ''}`).join('\n')}
+
+TODAY'S SCHEDULE:
+${todayTasks.map(task => `- "${task.title}" (${task.priority} priority, ${task.list || 'Personal'})${task.description ? ` - ${task.description}` : ''}`).join('\n')}
+
+ALL PENDING TASKS WITH DETAILS:
+${userTasks.filter(t => !t.completed).map(task => `- "${task.title}" (${task.priority} priority, ${task.list || 'Personal'})${task.dueDate ? ` - Due: ${new Date(task.dueDate).toLocaleDateString()}` : ' - No deadline'}${task.description ? ` - Description: ${task.description}` : ''}${task.tags && task.tags.length > 0 ? ` - Tags: ${task.tags.join(', ')}` : ''}`).join('\n')}
+
+RECENT COMPLETED TASKS:
+${userTasks.filter(t => t.completed).slice(0, 5).map(task => `- "${task.title}" (${task.list || 'Personal'}) - Completed`).join('\n')}
+
+STICKY NOTES CONTEXT:
+${stickyNotes.length > 0 ? stickyNotes.map(note => `- "${note.title}": ${note.content} (Color: ${note.color})`).join('\n') : 'No sticky notes found'}
 
 USER MESSAGE: "${message}"
 
-Please provide a helpful, encouraging, and actionable response based on their task data. Be conversational, motivational, and specific to their situation. Keep responses concise but informative.`;
+INSTRUCTIONS:
+You have complete access to their task data including names, descriptions, deadlines, priorities, and lists. Use this information to provide:
+1. Specific, actionable advice based on their actual tasks
+2. Optimal scheduling suggestions considering deadlines and priorities
+3. Motivation based on their completion patterns
+4. Detailed task analysis and recommendations
+5. Calendar-aware planning (today, tomorrow, this week)
+6. Priority-based task ordering suggestions
+
+Be conversational, encouraging, and specific to their situation. Reference actual task names and details when relevant.`;
 
         const result = await model.generateContent(contextPrompt);
         response = result.response.text();
