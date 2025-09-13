@@ -308,16 +308,19 @@ app.post('/api/tasks', authMiddleware, async (req, res) => {
     
     const task = await dbGet('SELECT * FROM tasks WHERE id = ?', [info.lastInsertRowid]);
     return res.status(201).json({
-      id: task.id,
-      title: task.title,
-      description: task.description || '',
-      completed: !!task.completed,
-      dueDate: task.due_date || '',
-      list: task.list || 'Personal',
-      tags: JSON.parse(task.tags || '[]'),
-      subtasks: JSON.parse(task.subtasks || '[]'),
-      createdAt: task.created_at,
-      updatedAt: task.updated_at || null
+      success: true,
+      task: {
+        id: task.id,
+        title: task.title,
+        description: task.description || '',
+        completed: !!task.completed,
+        dueDate: task.due_date || '',
+        list: task.list || 'Personal',
+        tags: JSON.parse(task.tags || '[]'),
+        subtasks: JSON.parse(task.subtasks || '[]'),
+        createdAt: task.created_at,
+        updatedAt: task.updated_at || null
+      }
     });
   } catch (error) {
     console.error('Create task error:', error);
