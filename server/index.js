@@ -596,7 +596,7 @@ app.post('/api/chatbot', authMiddleware, async (req, res) => {
           task.priority === 'high' && !task.completed
         );
         
-        const contextPrompt = `You are an advanced AI productivity assistant with deep access to a user's task management data. You can see everything about their tasks, deadlines, descriptions, priorities, and patterns.
+        const contextPrompt = `You are a friendly AI assistant who helps with productivity. You have access to all their task data and can see their tasks, deadlines, descriptions, and progress. Be conversational and helpful, like a smart friend who's great at organizing.
 
 USER PROFILE:
 - Email: ${userEmail}
@@ -640,15 +640,9 @@ ${stickyNotes.length > 0 ? stickyNotes.map(note => `- "${note.title}": ${note.co
 USER MESSAGE: "${message}"
 
 INSTRUCTIONS:
-You have complete access to their task data including names, descriptions, deadlines, priorities, and lists. Use this information to provide:
-1. Specific, actionable advice based on their actual tasks
-2. Optimal scheduling suggestions considering deadlines and priorities
-3. Motivation based on their completion patterns
-4. Detailed task analysis and recommendations
-5. Calendar-aware planning (today, tomorrow, this week)
-6. Priority-based task ordering suggestions
+You are a friendly, conversational AI assistant. Talk naturally like a helpful friend who happens to know everything about their tasks. Be casual, encouraging, and human-like. Don't be overly formal or robotic. 
 
-Be conversational, encouraging, and specific to their situation. Reference actual task names and details when relevant.`;
+Use their task data to give helpful advice, but keep it conversational. Reference their actual tasks by name when relevant. Be encouraging and supportive. Keep responses natural and engaging - like you're chatting with a friend who's helping them stay organized.`;
 
         const result = await model.generateContent(contextPrompt);
         response = result.response.text();
