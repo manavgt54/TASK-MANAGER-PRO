@@ -436,6 +436,49 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
   }
 });
 
+// Send reminder endpoint
+app.post('/api/tasks/:id/remind', authMiddleware, async (req, res) => {
+  const id = Number(req.params.id);
+  const { reminderType, userTime } = req.body || {};
+  
+  try {
+    const task = await dbGet('SELECT * FROM tasks WHERE id = ? AND user_id = ?', [id, req.user.userId]);
+    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+    
+    const user = await dbGet('SELECT * FROM users WHERE id = ?', [req.user.userId]);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    
+    // Send reminder email
+    const reminderSubject = `🔔 Task Reminder: ${task.title}`;
+    const reminderText = `
+Hi there!
+
+This is a reminder about your task:
+
+📋 Task: ${task.title}
+📝 Description: ${task.description || 'No description'}
+📅 Due Date: ${task.due_date || 'No due date set'}
+📋 List: ${task.list || 'Personal'}
+
+${reminderType === 'now' ? 'This is an immediate reminder.' : 'This is a scheduled reminder.'}
+
+Best regards,
+Task Manager Pro
+    `;
+    
+    try {
+      await sendOTPEmail(user.email, reminderSubject, reminderText);
+      return res.json({ success: true, message: 'Reminder sent successfully' });
+    } catch (emailError) {
+      console.log('Reminder email sent to console (email not configured):', reminderText);
+      return res.json({ success: true, message: 'Reminder logged to console (email not configured)' });
+    }
+  } catch (error) {
+    console.error('Send reminder error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });

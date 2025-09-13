@@ -163,6 +163,8 @@ function App() {
   const [taskSubtasks, setTaskSubtasks] = useState<string[]>([]);
   const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [taskReminder, setTaskReminder] = useState('');
+  const [reminderTime, setReminderTime] = useState('');
+  const [reminderDate, setReminderDate] = useState('');
 
   // Lists state
   const [lists] = useState<List[]>([
@@ -387,6 +389,30 @@ function App() {
     setAuthMode('login');
   };
 
+  const handleRemindNow = async (taskId: number) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/tasks/${taskId}/remind`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          reminderType: 'now',
+          userTime: new Date().toISOString()
+        })
+      });
+      
+      if (response.ok) {
+        alert('Reminder sent! Check your email.');
+      } else {
+        setError('Failed to send reminder');
+      }
+    } catch (err) {
+      setError('Failed to send reminder');
+    }
+  };
+
   // Task handlers
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -403,6 +429,8 @@ function App() {
         subtasks: taskSubtasks,
         priority: taskPriority,
         reminder: taskReminder || undefined,
+        reminderDate: reminderDate || undefined,
+        reminderTime: reminderTime || undefined,
       };
 
       const response = await api.createTask(token!, newTask);
@@ -502,6 +530,8 @@ function App() {
     setTaskSubtasks([]);
     setTaskPriority('medium');
     setTaskReminder('');
+    setReminderDate('');
+    setReminderTime('');
   };
 
   const openTaskForm = (task?: Task) => {
@@ -1430,6 +1460,13 @@ function App() {
                             {task.completed && '✓'}
                           </button>
                           <button
+                            onClick={() => handleRemindNow(task.id)}
+                            className="text-gray-400 hover:text-purple-600 p-1"
+                            title="Send reminder now"
+                          >
+                            🔔
+                          </button>
+                          <button
                             onClick={() => openTaskForm(task)}
                             className="text-gray-400 hover:text-gray-600 p-1"
                           >
@@ -1515,15 +1552,35 @@ function App() {
                   </div>
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reminder</label>
-                  <input
-                    type="text"
-                    value={taskReminder}
-                    onChange={(e) => setTaskReminder(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder="e.g., 1 hour before, Tomorrow morning"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Reminder Note</label>
+                    <input
+                      type="text"
+                      value={taskReminder}
+                      onChange={(e) => setTaskReminder(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="e.g., 1 hour before, Tomorrow morning"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Reminder Date</label>
+                    <input
+                      type="date"
+                      value={reminderDate}
+                      onChange={(e) => setReminderDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Reminder Time</label>
+                    <input
+                      type="time"
+                      value={reminderTime}
+                      onChange={(e) => setReminderTime(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
                 </div>
                 
                 <div className="flex space-x-3">
