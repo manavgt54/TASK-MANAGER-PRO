@@ -1,12 +1,11 @@
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 let dbInstance;
 
 function getDb() {
   if (!dbInstance) {
     const dbPath = path.join(__dirname, '..', 'data.sqlite');
-    dbInstance = new Database(dbPath);
-    dbInstance.pragma('journal_mode = WAL');
+    dbInstance = new sqlite3.Database(dbPath);
   }
   return dbInstance;
 }

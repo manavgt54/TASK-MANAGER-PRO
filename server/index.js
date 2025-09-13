@@ -45,46 +45,78 @@ app.use(express.json());
 // Initialize DB and tables
 const db = getDb();
 
-// Drop existing tables to recreate with new schema
-db.exec(`
-  DROP TABLE IF EXISTS tasks;
-  DROP TABLE IF EXISTS password_resets;
-  DROP TABLE IF EXISTS users;
-`);
+// Initialize database tables
+db.serialize(() => {
+  // Drop existing tables to recreate with new schema
+  db.exec(`
+    DROP TABLE IF EXISTS tasks;
+    DROP TABLE IF EXISTS password_resets;
+    DROP TABLE IF EXISTS users;
+  `);
 
-db.exec(`
-  CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-  CREATE TABLE tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    title TEXT NOT NULL,
-    description TEXT,
-    completed INTEGER DEFAULT 0,
-    due_date TEXT,
-    list TEXT DEFAULT 'Personal',
-    tags TEXT DEFAULT '[]',
-    subtasks TEXT DEFAULT '[]',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT,
-    FOREIGN KEY(user_id) REFERENCES users(id)
-  );
-  CREATE TABLE password_resets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL,
-    otp TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
-    used INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-`);
+  // Create tables
+  db.exec(`
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      completed INTEGER DEFAULT 0,
+      due_date TEXT,
+      list TEXT DEFAULT 'Personal',
+      tags TEXT DEFAULT '[]',
+      subtasks TEXT DEFAULT '[]',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT,
+      FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+    CREATE TABLE password_resets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      otp TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+});
 
 function signToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+}
+
+// Helper functions for async database operations
+function dbGet(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+}
+
+function dbAll(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+}
+
+function dbRun(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function(err) {
+      if (err) reject(err);
+      else resolve({ lastInsertRowid: this.lastID, changes: this.changes });
+    });
+  });
 }
 
 // Generate 6-digit OTP
@@ -155,8 +187,7 @@ app.post('/api/auth/register', async (req, res) => {
   if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required' });
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const insert = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)');
-    const info = insert.run(email, passwordHash);
+    const info = await dbRun('INSERT INTO users (email, password_hash) VALUES (?, ?)', [email, passwordHash]);
     const token = signToken({ userId: info.lastInsertRowid, email });
     const user = { id: info.lastInsertRowid, email };
     return res.json({ success: true, token, user });
@@ -171,12 +202,16 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required' });
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user) return res.status(401).json({ success: false, message: 'Invalid credentials' });
-  const ok = await bcrypt.compare(password, user.password_hash);
-  if (!ok) return res.status(401).json({ success: false, message: 'Invalid credentials' });
-  const token = signToken({ userId: user.id, email: user.email });
-  return res.json({ success: true, token, user: { id: user.id, email: user.email } });
+  try {
+    const user = await dbGet('SELECT * FROM users WHERE email = ?', [email]);
+    if (!user) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    const token = signToken({ userId: user.id, email: user.email });
+    return res.json({ success: true, token, user: { id: user.id, email: user.email } });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 // Forgot Password - Send OTP
@@ -186,7 +221,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
   try {
     // Check if user exists
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const user = await dbGet('SELECT * FROM users WHERE email = ?', [email]);
     if (!user) {
       // Don't reveal if email exists or not for security
       return res.json({ success: true, message: 'If the email exists, an OTP has been sent' });
@@ -197,11 +232,10 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
     // Store OTP in database
-    const insertOTP = db.prepare(`
+    await dbRun(`
       INSERT INTO password_resets (email, otp, expires_at) 
       VALUES (?, ?, ?)
-    `);
-    insertOTP.run(email, otp, expiresAt);
+    `, [email, otp, expiresAt]);
 
     // Send email (always works now - OTP is logged to console)
     await sendOTPEmail(email, otp);
@@ -223,18 +257,18 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 
   try {
     // Find valid OTP
-    const resetRecord = db.prepare(`
+    const resetRecord = await dbGet(`
       SELECT * FROM password_resets 
       WHERE email = ? AND otp = ? AND used = 0 AND expires_at > datetime('now')
       ORDER BY created_at DESC LIMIT 1
-    `).get(email, otp);
+    `, [email, otp]);
 
     if (!resetRecord) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
     }
 
     // Mark OTP as used
-    db.prepare('UPDATE password_resets SET used = 1 WHERE id = ?').run(resetRecord.id);
+    await dbRun('UPDATE password_resets SET used = 1 WHERE id = ?', [resetRecord.id]);
 
     // Generate temporary token for password reset
     const resetToken = jwt.sign(
@@ -276,15 +310,14 @@ app.post('/api/auth/reset-password', async (req, res) => {
     const passwordHash = await bcrypt.hash(newPassword, 10);
     
     // Update password
-    const updateUser = db.prepare('UPDATE users SET password_hash = ? WHERE email = ?');
-    const result = updateUser.run(passwordHash, email);
+    const result = await dbRun('UPDATE users SET password_hash = ? WHERE email = ?', [passwordHash, email]);
 
     if (result.changes === 0) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
     // Invalidate all OTPs for this email
-    db.prepare('UPDATE password_resets SET used = 1 WHERE email = ?').run(email);
+    await dbRun('UPDATE password_resets SET used = 1 WHERE email = ?', [email]);
 
     return res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {
@@ -297,125 +330,159 @@ app.post('/api/auth/reset-password', async (req, res) => {
 });
 
 // Tasks CRUD
-app.get('/api/tasks', authMiddleware, (req, res) => {
-  const rows = db.prepare('SELECT * FROM tasks WHERE user_id = ? ORDER BY id DESC').all(req.user.userId);
-  return res.json(rows.map(r => ({
-    id: r.id,
-    title: r.title,
-    description: r.description || '',
-    completed: !!r.completed,
-    dueDate: r.due_date || '',
-    list: r.list || 'Personal',
-    tags: JSON.parse(r.tags || '[]'),
-    subtasks: JSON.parse(r.subtasks || '[]'),
-    createdAt: r.created_at,
-    updatedAt: r.updated_at || null
-  })));
+app.get('/api/tasks', authMiddleware, async (req, res) => {
+  try {
+    const rows = await dbAll('SELECT * FROM tasks WHERE user_id = ? ORDER BY id DESC', [req.user.userId]);
+    return res.json(rows.map(r => ({
+      id: r.id,
+      title: r.title,
+      description: r.description || '',
+      completed: !!r.completed,
+      dueDate: r.due_date || '',
+      list: r.list || 'Personal',
+      tags: JSON.parse(r.tags || '[]'),
+      subtasks: JSON.parse(r.subtasks || '[]'),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at || null
+    })));
+  } catch (error) {
+    console.error('Get tasks error:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
 });
 
-app.post('/api/tasks', authMiddleware, (req, res) => {
+app.post('/api/tasks', authMiddleware, async (req, res) => {
   const { title, description, dueDate, list, tags, subtasks } = req.body || {};
   if (!title) return res.status(400).json({ message: 'Title is required' });
   
-  const stmt = db.prepare(`
-    INSERT INTO tasks (user_id, title, description, completed, due_date, list, tags, subtasks) 
-    VALUES (?, ?, ?, 0, ?, ?, ?, ?)
-  `);
-  const info = stmt.run(
-    req.user.userId, 
-    title, 
-    description || '', 
-    dueDate || '', 
-    list || 'Personal',
-    JSON.stringify(tags || []),
-    JSON.stringify(subtasks || [])
-  );
-  
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid);
-  return res.status(201).json({
-    id: task.id,
-    title: task.title,
-    description: task.description || '',
-    completed: !!task.completed,
-    dueDate: task.due_date || '',
-    list: task.list || 'Personal',
-    tags: JSON.parse(task.tags || '[]'),
-    subtasks: JSON.parse(task.subtasks || '[]'),
-    createdAt: task.created_at,
-    updatedAt: task.updated_at || null
-  });
+  try {
+    const info = await dbRun(`
+      INSERT INTO tasks (user_id, title, description, completed, due_date, list, tags, subtasks) 
+      VALUES (?, ?, ?, 0, ?, ?, ?, ?)
+    `, [
+      req.user.userId, 
+      title, 
+      description || '', 
+      dueDate || '', 
+      list || 'Personal',
+      JSON.stringify(tags || []),
+      JSON.stringify(subtasks || [])
+    ]);
+    
+    const task = await dbGet('SELECT * FROM tasks WHERE id = ?', [info.lastInsertRowid]);
+    return res.status(201).json({
+      id: task.id,
+      title: task.title,
+      description: task.description || '',
+      completed: !!task.completed,
+      dueDate: task.due_date || '',
+      list: task.list || 'Personal',
+      tags: JSON.parse(task.tags || '[]'),
+      subtasks: JSON.parse(task.subtasks || '[]'),
+      createdAt: task.created_at,
+      updatedAt: task.updated_at || null
+    });
+  } catch (error) {
+    console.error('Create task error:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
 });
 
-app.put('/api/tasks/:id', authMiddleware, (req, res) => {
+app.put('/api/tasks/:id', authMiddleware, async (req, res) => {
   const id = Number(req.params.id);
   const { title, description, completed, dueDate, list, tags, subtasks } = req.body || {};
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?').get(id, req.user.userId);
-  if (!task) return res.status(404).json({ message: 'Task not found' });
   
-  const stmt = db.prepare(`
-    UPDATE tasks SET 
-      title = ?, description = ?, completed = ?, due_date = ?, 
-      list = ?, tags = ?, subtasks = ?, updated_at = datetime('now') 
-    WHERE id = ? AND user_id = ?
-  `);
-  stmt.run(
-    title ?? task.title, 
-    description ?? task.description, 
-    completed !== undefined ? (completed ? 1 : 0) : task.completed,
-    dueDate ?? task.due_date,
-    list ?? task.list,
-    JSON.stringify(tags ?? JSON.parse(task.tags || '[]')),
-    JSON.stringify(subtasks ?? JSON.parse(task.subtasks || '[]')),
-    id, 
-    req.user.userId
-  );
-  
-  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-  return res.json({
-    id: updated.id,
-    title: updated.title,
-    description: updated.description || '',
-    completed: !!updated.completed,
-    dueDate: updated.due_date || '',
-    list: updated.list || 'Personal',
-    tags: JSON.parse(updated.tags || '[]'),
-    subtasks: JSON.parse(updated.subtasks || '[]'),
-    createdAt: updated.created_at,
-    updatedAt: updated.updated_at || null
-  });
+  try {
+    const task = await dbGet('SELECT * FROM tasks WHERE id = ? AND user_id = ?', [id, req.user.userId]);
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+    
+    await dbRun(`
+      UPDATE tasks SET 
+        title = ?, description = ?, completed = ?, due_date = ?, 
+        list = ?, tags = ?, subtasks = ?, updated_at = datetime('now') 
+      WHERE id = ? AND user_id = ?
+    `, [
+      title ?? task.title, 
+      description ?? task.description, 
+      completed !== undefined ? (completed ? 1 : 0) : task.completed,
+      dueDate ?? task.due_date,
+      list ?? task.list,
+      JSON.stringify(tags ?? JSON.parse(task.tags || '[]')),
+      JSON.stringify(subtasks ?? JSON.parse(task.subtasks || '[]')),
+      id, 
+      req.user.userId
+    ]);
+    
+    const updated = await dbGet('SELECT * FROM tasks WHERE id = ?', [id]);
+    return res.json({
+      id: updated.id,
+      title: updated.title,
+      description: updated.description || '',
+      completed: !!updated.completed,
+      dueDate: updated.due_date || '',
+      list: updated.list || 'Personal',
+      tags: JSON.parse(updated.tags || '[]'),
+      subtasks: JSON.parse(updated.subtasks || '[]'),
+      createdAt: updated.created_at,
+      updatedAt: updated.updated_at || null
+    });
+  } catch (error) {
+    console.error('Update task error:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
 });
 
-app.patch('/api/tasks/:id/toggle', authMiddleware, (req, res) => {
+app.patch('/api/tasks/:id/toggle', authMiddleware, async (req, res) => {
   const id = Number(req.params.id);
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?').get(id, req.user.userId);
-  if (!task) return res.status(404).json({ message: 'Task not found' });
-  const newCompleted = task.completed ? 0 : 1;
-  db.prepare('UPDATE tasks SET completed = ?, updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?')
-    .run(newCompleted, id, req.user.userId);
-  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
-  return res.json({
-    id: updated.id,
-    title: updated.title,
-    description: updated.description || '',
-    completed: !!updated.completed,
-    createdAt: updated.created_at,
-    updatedAt: updated.updated_at || null
-  });
+  
+  try {
+    const task = await dbGet('SELECT * FROM tasks WHERE id = ? AND user_id = ?', [id, req.user.userId]);
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+    
+    const newCompleted = task.completed ? 0 : 1;
+    await dbRun('UPDATE tasks SET completed = ?, updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?', 
+      [newCompleted, id, req.user.userId]);
+    
+    const updated = await dbGet('SELECT * FROM tasks WHERE id = ?', [id]);
+    return res.json({
+      id: updated.id,
+      title: updated.title,
+      description: updated.description || '',
+      completed: !!updated.completed,
+      createdAt: updated.created_at,
+      updatedAt: updated.updated_at || null
+    });
+  } catch (error) {
+    console.error('Toggle task error:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
 });
 
-app.delete('/api/tasks/:id', authMiddleware, (req, res) => {
+app.delete('/api/tasks/:id', authMiddleware, async (req, res) => {
   const id = Number(req.params.id);
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?').get(id, req.user.userId);
-  if (!task) return res.status(404).json({ message: 'Task not found' });
-  db.prepare('DELETE FROM tasks WHERE id = ? AND user_id = ?').run(id, req.user.userId);
-  return res.status(204).send();
+  
+  try {
+    const task = await dbGet('SELECT * FROM tasks WHERE id = ? AND user_id = ?', [id, req.user.userId]);
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+    
+    await dbRun('DELETE FROM tasks WHERE id = ? AND user_id = ?', [id, req.user.userId]);
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete task error:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
 });
 
 // Get current user info
-app.get('/api/auth/me', authMiddleware, (req, res) => {
-  const user = db.prepare('SELECT id, email, created_at FROM users WHERE id = ?').get(req.user.userId);
-  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-  return res.json({ success: true, user: { id: user.id, email: user.email, createdAt: user.created_at } });
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await dbGet('SELECT id, email, created_at FROM users WHERE id = ?', [req.user.userId]);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    return res.json({ success: true, user: { id: user.id, email: user.email, createdAt: user.created_at } });
+  } catch (error) {
+    console.error('Get user error:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 app.get('/api/health', (_req, res) => {
