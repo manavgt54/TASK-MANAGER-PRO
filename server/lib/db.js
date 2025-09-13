@@ -19,7 +19,7 @@ function dbGet(sql, params = []) {
       if (sql.includes('SELECT * FROM users WHERE email = ?')) {
         const user = dbInstance.users.find(u => u.email === params[0]);
         resolve(user || null);
-      } else if (sql.includes('SELECT * FROM users WHERE id = ?')) {
+      } else if (sql.includes('SELECT * FROM users WHERE id = ?') || sql.includes('SELECT id, email, created_at FROM users WHERE id = ?')) {
         const user = dbInstance.users.find(u => u.id === params[0]);
         resolve(user || null);
       } else if (sql.includes('SELECT * FROM tasks WHERE id = ?')) {
