@@ -578,6 +578,23 @@ app.post('/api/chatbot', authMiddleware, async (req, res) => {
       } else {
         response = `You don't have any recent tasks. Let's create some new ones!`;
       }
+    } else if (message.toLowerCase().includes('what tasks') || message.toLowerCase().includes('my tasks')) {
+      if (userTasks.length === 0) {
+        response = `You don't have any tasks yet! Let's create your first task to get started. Click the "+" button to add a new task.`;
+      } else {
+        const pendingTasks = userTasks.filter(t => !t.completed);
+        const completedTasks = userTasks.filter(t => t.completed);
+        response = `Here's your task overview:\n\n📋 **Pending Tasks (${pendingTasks.length}):**\n${pendingTasks.slice(0, 5).map(task => `• ${task.title} (${task.priority} priority, ${task.list || 'Personal'})`).join('\n')}${pendingTasks.length > 5 ? `\n... and ${pendingTasks.length - 5} more` : ''}\n\n✅ **Completed Tasks (${completedTasks.length}):**\n${completedTasks.slice(0, 3).map(task => `• ${task.title}`).join('\n')}${completedTasks.length > 3 ? `\n... and ${completedTasks.length - 3} more` : ''}\n\nWhat would you like to focus on?`;
+      }
+    } else if (message.toLowerCase().includes('urgent') || message.toLowerCase().includes('important')) {
+      const urgentTasks = userTasks.filter(t => t.priority === 'high' && !t.completed);
+      const overdueTasks = userTasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && !t.completed);
+      
+      if (urgentTasks.length === 0 && overdueTasks.length === 0) {
+        response = `Great news! You don't have any urgent or overdue tasks right now. You're all caught up! 🎉`;
+      } else {
+        response = `Here are your urgent tasks:\n\n🔴 **High Priority (${urgentTasks.length}):**\n${urgentTasks.map(task => `• ${task.title} (${task.list || 'Personal'})`).join('\n')}\n\n⏰ **Overdue (${overdueTasks.length}):**\n${overdueTasks.map(task => `• ${task.title} (due ${new Date(task.dueDate).toLocaleDateString()})`).join('\n')}\n\nI recommend tackling the overdue tasks first, then the high-priority ones.`;
+      }
     } else {
       response = `I can help you with task management, scheduling, motivation, and productivity tips. You currently have ${totalTasks} tasks (${completedTasks} completed, ${pendingTasks} pending) across ${taskLists.length} lists. What would you like to work on?`;
     }

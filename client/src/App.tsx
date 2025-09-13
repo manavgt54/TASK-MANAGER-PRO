@@ -170,6 +170,7 @@ function App() {
   const [chatMessages, setChatMessages] = useState<Array<{id: number, text: string, isUser: boolean, timestamp: Date}>>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [showContextWindow, setShowContextWindow] = useState(false);
 
   // Lists state
   const [lists] = useState<List[]>([
@@ -1545,10 +1546,47 @@ function App() {
           <div className="bg-white rounded-lg shadow-sm p-6 h-[600px] flex flex-col">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-gray-900">🤖 AI Assistant</h2>
-              <div className="text-sm text-gray-500">
-                Your productivity buddy
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-gray-500">
+                  Your productivity buddy
+                </div>
+                <button
+                  onClick={() => setShowContextWindow(!showContextWindow)}
+                  className="text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1 rounded-full transition-colors"
+                >
+                  {showContextWindow ? 'Hide Context' : 'Show Context'}
+                </button>
               </div>
             </div>
+            
+            {/* Context Window */}
+            {showContextWindow && (
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">📊 Your Data Context</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  <div className="bg-white p-2 rounded">
+                    <div className="font-medium text-gray-600">Total Tasks</div>
+                    <div className="text-lg font-bold text-blue-600">{tasks.length}</div>
+                  </div>
+                  <div className="bg-white p-2 rounded">
+                    <div className="font-medium text-gray-600">Completed</div>
+                    <div className="text-lg font-bold text-green-600">{tasks.filter(t => t.completed).length}</div>
+                  </div>
+                  <div className="bg-white p-2 rounded">
+                    <div className="font-medium text-gray-600">Pending</div>
+                    <div className="text-lg font-bold text-orange-600">{tasks.filter(t => !t.completed).length}</div>
+                  </div>
+                  <div className="bg-white p-2 rounded">
+                    <div className="font-medium text-gray-600">High Priority</div>
+                    <div className="text-lg font-bold text-red-600">{tasks.filter(t => t.priority === 'high' && !t.completed).length}</div>
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  <div>📋 Lists: {[...new Set(tasks.map(t => t.list || 'Personal'))].join(', ')}</div>
+                  <div>⏰ Overdue: {tasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && !t.completed).length} tasks</div>
+                </div>
+              </div>
+            )}
             
             {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto mb-4 space-y-4">
@@ -1563,6 +1601,34 @@ function App() {
                     <li>• Suggesting improvements</li>
                   </ul>
                   <p className="mt-4">Ask me anything about your tasks!</p>
+                  
+                  {/* Quick Action Buttons */}
+                  <div className="mt-6 grid grid-cols-2 gap-2 max-w-md mx-auto">
+                    <button
+                      onClick={() => setChatInput("What tasks do I have?")}
+                      className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-2 rounded-lg text-sm transition-colors"
+                    >
+                      📋 My Tasks
+                    </button>
+                    <button
+                      onClick={() => setChatInput("Motivate me")}
+                      className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-2 rounded-lg text-sm transition-colors"
+                    >
+                      💪 Motivate Me
+                    </button>
+                    <button
+                      onClick={() => setChatInput("Help me plan my day")}
+                      className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-2 rounded-lg text-sm transition-colors"
+                    >
+                      📅 Plan My Day
+                    </button>
+                    <button
+                      onClick={() => setChatInput("Analyze my productivity")}
+                      className="bg-orange-100 hover:bg-orange-200 text-orange-700 px-3 py-2 rounded-lg text-sm transition-colors"
+                    >
+                      📊 Analyze Me
+                    </button>
+                  </div>
                 </div>
               ) : (
                 chatMessages.map((message) => (
